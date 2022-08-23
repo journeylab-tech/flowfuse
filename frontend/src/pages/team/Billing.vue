@@ -99,7 +99,7 @@ export default {
                 billingSubscription.next_billing_date = billingSubscription.next_billing_date * 1000 // API returns Seconds, JS expects miliseconds
                 this.subscription = billingSubscription
                 this.subscription.items.map((item) => {
-                    item.total_price = item.unit_price * item.quantity
+                    item.total_price = item.price * item.quantity
                     return item
                 })
                 this.loading = false
