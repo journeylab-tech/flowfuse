@@ -67,6 +67,9 @@ export default {
                     templateFields.forEach(field => {
                         if (field !== 'palette_modules') {
                             // this.editable.changed.settings[field] = this.editable.settings[field] != this.original.settings[field]
+                            if (this.editable.settings[field] !== this.original.settings[field]) {
+                                console.log(`watch-project changed on ${field}`)
+                            }
                             changed = changed || (this.editable.settings[field] !== this.original.settings[field])
                         }
                     })
@@ -84,29 +87,36 @@ export default {
                 this.editable.settings.palette_modules.forEach(field => {
                     errors = errors || field.error
                     if (/^add/.test(field.index)) {
+                        console.log('watch-modules changed due to add')
                         changed = true
                     } else {
                         originalCount++
                         if (this.original.settings.palette_modulesMap[field.name]) {
                             const original = this.original.settings.palette_modulesMap[field.name]
                             if (original.index !== field.index) {
+                                console.log('watch-modules changed due to index change')
                                 changed = true
                             } else if (original.name !== field.name) {
+                                console.log(`watch-modules changed due to name change [${original.name}] [${field.name}]`)
                                 changed = true
                             } else if (original.version !== field.version) {
+                                console.log(`watch-modules changed due to version change [${original.version}] [${field.version}]`)
                                 changed = true
                             }
                         } else {
+                            console.log('watch-modules changed due to add2')
                             changed = true
                         }
                     }
                 })
                 if (originalCount !== this.original.settings.palette_modules.length) {
+                    console.log(`watch-modules changed due to count change [${originalCount}] [${this.original.settings.palette_modules.length}]`)
                     changed = true
                 }
                 this.modulesChanged = changed
                 this.unsavedChanges = this.unsavedChanges || changed
                 this.hasErrors = errors
+                console.log(`=> unsavedChanges ${this.unsavedChanges}`)
             }
         }
     },
