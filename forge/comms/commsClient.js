@@ -1,3 +1,4 @@
+const { randomBytes } = require('crypto')
 const EventEmitter = require('events')
 
 const mqtt = require('mqtt')
@@ -20,7 +21,7 @@ class CommsClient extends EventEmitter {
         if (this.app.config.broker.url !== ':test:') {
             /** @type {MQTT.IClientOptions} */
             const brokerConfig = {
-                clientId: 'forge_platform',
+                clientId: 'forge_platform:' + randomBytes(8).toString('hex'),
                 username: 'forge_platform',
                 password: await this.app.settings.get('commsToken'),
                 reconnectPeriod: 5000
@@ -57,10 +58,13 @@ class CommsClient extends EventEmitter {
                             status: message.toString()
                         })
                     } else if (messageType === 'logs') {
-                        this.emit('logs/device', {
-                            id: ownerId,
-                            logs: message.toString()
-                        })
+                        if (topicParts[6] && topicParts[6] === 'heartbeat') {
+                            // track frontends
+                            this.emit('logs/heartbeat', {
+                                id: `${topicParts[2]}:${ownerId}`,
+                                timestamp: Date.now()
+                            })
+                        }
                     } else if (messageType === 'response') {
                         const response = {
                             id: ownerId,
@@ -75,10 +79,10 @@ class CommsClient extends EventEmitter {
                 '$share/platform/ff/v1/+/l/+/status',
                 // Device status - shared subscription
                 '$share/platform/ff/v1/+/d/+/status',
-                // Device logs - not shared subscription
-                'ff/v1/+/d/+/logs',
                 // Device response - not shared subscription
-                'ff/v1/+/d/+/response/' + this.platformId
+                'ff/v1/+/d/+/response/' + this.platformId,
+                // Device logs heartbeat
+                'ff/v1/+/d/+/logs/heartbeat'
             ])
         }
     }

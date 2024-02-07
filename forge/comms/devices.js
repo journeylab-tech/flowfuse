@@ -53,13 +53,29 @@ class DeviceCommsHandler {
         this.app = app
         this.client = client
         this.deviceLogClients = {}
+        this.deviceLogHeartbeats = {}
         /** @type {Object.<string, typeof CommandResponseMonitor>} */
         this.inFlightCommands = {}
+        this.deviceLogHeartbeatInterval = -1
 
         // Listen for any incoming device status events
         client.on('status/device', (status) => { this.handleStatus(status) })
-        client.on('logs/device', (log) => { this.forwardLog(log) })
         client.on('response/device', (response) => { this.handleCommandResponse(response) })
+        client.on('logs/heartbeat', (beat) => {
+            this.deviceLogHeartbeats[beat.id] = beat.timestamp
+        })
+
+        this.deviceLogHeartbeatInterval = setInterval(() => {
+            const now = Date.now()
+            for (const [key, value] of Object.entries(this.deviceLogHeartbeats)) {
+                if (now - value > 25000) {
+                    const parts = key.split(':')
+                    this.sendCommand(parts[0], parts[1], 'stopLog', '')
+                    this.app.log.info(`Disable device logging ${parts[1]} in team ${parts[0]}`)
+                    delete this.deviceLogHeartbeats[key]
+                }
+            }
+        }, 30000)
     }
 
     async handleStatus (status) {
@@ -74,6 +90,11 @@ class DeviceCommsHandler {
             try {
                 const payload = JSON.parse(status.status)
                 await this.app.db.controllers.Device.updateState(device, payload)
+
+                if (payload === null) {
+                    // This device is busy updating - don't interrupt it
+                    return
+                }
 
                 // If the status state===unknown, the device is waiting for confirmation
                 // it has the right details. Always response with an 'update' command in
@@ -335,61 +356,6 @@ class DeviceCommsHandler {
     }
 
     /**
-     * Steam logs to web from devices
-     * @param {String} teamId
-     * @param {String} deviceId
-     * @param {WebSocket} socket
-     */
-    streamLogs (teamId, deviceId, socket) {
-        if (!this.deviceLogClients[deviceId]) {
-            this.deviceLogClients[deviceId] = {
-                cache: [],
-                sockets: new Set()
-            }
-            this.sendCommand(teamId, deviceId, 'startLog', '')
-            this.app.log.info(`Enable device logging ${deviceId}`)
-        }
-        this.deviceLogClients[deviceId].sockets.add(socket)
-        for (let i = 0; i < this.deviceLogClients[deviceId].cache.length; i++) {
-            socket.send(this.deviceLogClients[deviceId].cache[i].logs)
-        }
-        socket.on('close', () => {
-            if (this.deviceLogClients[deviceId]) {
-                this.deviceLogClients[deviceId].sockets.delete(socket)
-                if (this.deviceLogClients[deviceId].sockets.size === 0) {
-                    delete this.deviceLogClients[deviceId]
-                    this.sendCommand(teamId, deviceId, 'stopLog', '')
-                    this.app.log.info(`Disable device logging ${deviceId}`)
-                }
-            }
-        })
-    }
-
-    forwardLog (log) {
-        const socketInfo = this.deviceLogClients[log.id]
-        if (socketInfo) {
-            socketInfo.cache.push(log)
-            if (socketInfo.cache.length > 10) {
-                socketInfo.cache.shift()
-            }
-            socketInfo.sockets.forEach(s => s.send(log.logs))
-        } else {
-            // The device has sent some logs that no-one is listening for. We should
-            // tell the device to step sending them
-            const deviceId = log.id
-            this.app.db.models.Device.byId(deviceId).then(device => {
-                if (device) {
-                    this.sendCommand(device.Team.hashid, deviceId, 'stopLog', '')
-                    this.app.log.info(`Disable device logging ${deviceId}`)
-                }
-                return true
-            }).catch(_ => {
-                // Ignore any errors
-            })
-        }
-    }
-
-    /**
      * Enable the Node-RED editor on a device
      * @param {String} teamId Team id of the device
      * @param {String} deviceId Device id
@@ -406,6 +372,22 @@ class DeviceCommsHandler {
      */
     async disableEditor (teamId, deviceId) {
         await this.sendCommandAsync(teamId, deviceId, 'stopEditor', '')
+    }
+
+    /**
+     * Shutdown log heartbeat interval
+     */
+    async stopLogWatcher () {
+        for (const [key] of Object.entries(this.deviceLogHeartbeats)) {
+            const parts = key.split(':')
+            try {
+                await this.sendCommandAsync(parts[0], parts[1], 'stopLog', '')
+                this.app.log.info(`Disable device logging ${parts[1]}`)
+            } catch (err) {
+                // ignore as shutting down
+            }
+        }
+        clearInterval(this.deviceLogHeartbeatInterval)
     }
 }
 

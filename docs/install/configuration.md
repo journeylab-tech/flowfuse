@@ -21,6 +21,7 @@ Option | Description
 `domain` | The domain that instance names will be prepended to on Docker & Kubernetes platforms to create a hostname to access the instance. A wildcard DNS A record should point be configured to point to the FlowFuse entry IP Address.
 `support_contact` | a URL or string with contact details for the administrator e.g `mailto:support@example.com` or `https://support.example.com` . Defaults to the email address of the first admin user or `the administrator` if no email address set.
 `create_admin` | If set to `true` will create a default admin user on first run, the username/password is written to the logs. Default: `false`
+`create_admin_access_token` | If set to `true` an access token (ffpat) is created for the default admin user on first run. Its value is written to the logs. Default: `false`
 
 
 NOTE: Changing the `base_url` and `domain` after Node-RED instances have been created is possible, but the original hostname and domain must remain active in order to access the instances and for an them to be able to access the FlowFuse resources.
@@ -119,6 +120,17 @@ Option        | Description
 
 See [here](./email_providers.md) for example configuration with common email providers.
 
+### AWS SES Email
+
+There is also support for using AWS SES email, this is mainly intended to be used when deployed on AWS EKS.
+
+This assumes that the instance is running with a Service Account that has a AWS Role with SES access enabled.
+
+Option        | Description
+--------------|------------
+`email.ses.region` | The AWS region to connect to
+
+
 ## Telemetry configuration
 
 By default, the platform will send anonymous usage information back to us at FlowForge Inc.
@@ -214,6 +226,23 @@ can access the File server.
 Option        | Description
 --------------|------------
 `fileStore.url`  | The URL of the FlowFuse File Server to use. Default: not set
+
+## Enabling Persistent File Storage - File Nodes
+
+These nodes are enabled by default on the FlowFuse Cloud platform. If you're
+running a self-hosted environment you should follow the next steps.
+
+FlowFuse file nodes replace the core Node-RED file nodes. To make use of these
+nodes, the FlowFuse platform Administrator must ensure the core file nodes are 
+not loaded.
+
+This is done by adding `10-file.js` in the **Exclude nodes by filename** 
+section of your instance settings under the **Palette** section.
+
+This setting is modifiable only by a Team owner and only if it has not been
+locked in the [template](/docs/user/concepts.md#template) by the platform Administrator.
+
+[Click here](/docs/user/filenodes.md), to learn more about the usage of the FlowFuse File Nodes.
 
 ## Content Security Policy
 
