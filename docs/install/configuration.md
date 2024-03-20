@@ -22,6 +22,7 @@ Option | Description
 `support_contact` | a URL or string with contact details for the administrator e.g `mailto:support@example.com` or `https://support.example.com` . Defaults to the email address of the first admin user or `the administrator` if no email address set.
 `create_admin` | If set to `true` will create a default admin user on first run, the username/password is written to the logs. Default: `false`
 `create_admin_access_token` | If set to `true` an access token (ffpat) is created for the default admin user on first run. Its value is written to the logs. Default: `false`
+`license` | Can be used to pass in a license key for FlowFuse. Default not set
 
 
 NOTE: Changing the `base_url` and `domain` after Node-RED instances have been created is possible, but the original hostname and domain must remain active in order to access the instances and for an them to be able to access the FlowFuse resources.
@@ -75,12 +76,14 @@ Option        | Description
 --------------|------------
 `driver.options.start_port` | The port number to start assigning to Node-RED instances as they are created. Default: `12080`
 `driver.options.node_path` | The path to find the node.js executable - useful if Node.js has been installed with `nvm` so isn't necessarily on the system path.
+`driver.options.logPassthrough` | Prints the Node-RED logs in JSON format to stdout of the nr-launcher process. Default: `false`
 
 ### Docker Driver options
 
 Option        | Description
 --------------|------------
 `driver.options.socket` | The path to the Docker control unix domain socket. Default `/var/run/docker.sock`
+`driver.options.logPassthrough` | Prints the Node-RED logs in JSON format to stdout of the Instance containers. Default: `false`
 
 ### Kubernetes Driver options
 
@@ -89,11 +92,12 @@ Option        | Description
 `driver.options.namespace` | The namespace to run Node-RED instances in. Default: `flowforge`
 `driver.options.cloudProvider` | Enables specific options for certain platforms e.g. `aws`. Default: not set
 `driver.options.projectSelector` | A YAML object containing node annotations to use to filter which nodes Node-RED instances run on. Default: `role: projects`
+`driver.options.logPassthrough` | Prints the Node-RED logs in JSON format to stdout of the instance pods. This should be set with the `forge.logPassthrough=true` Helm chart value. Default: `false`
 
 ## MQTT Broker configuration
 
 By default, the platform runs without an MQTT broker. This restricts some features
-in the platform, such as the Project Nodes and Remote Device Editing.
+in the platform, such as the Project Nodes, Device Actions and Remote Device Editing.
 
 If a broker has been setup in the platform, the following configuration is required:
 
@@ -150,6 +154,8 @@ Option        | Description
 `telemetry.frontend.posthog.apiurl` | The API URL for PostHog, either 'https://app.posthog.com' or 'https://eu.posthog.com'. Default: `https://app.posthog.com`
 `telemetry.frontend.posthog.apikey` | The API key provided to you from your own PostHog account. Default: `null`
 `telemetry.frontend.posthog.capture_pageview` | FlowFuse is designed as to provide custom posthog `$pageview` events that provide more detail on navigation than the default, and suit a single page application better. As such, we recommend setting this to false in order to prevent duplicate `pageleave`/`pageview` events firing. Default: `true`
+`telemetry.frontend.google.tag` | A Google Tag Manager ID. Default: `null`
+`telemetry.frontend.google.events` | An object with keys matching the names of tag events to be enabled and any payload values. Default `null`
 
 
 ## Rate Limiting configuration

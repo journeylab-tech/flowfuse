@@ -2,6 +2,8 @@ const crypto = require('crypto')
 const querystring = require('querystring')
 const { URL } = require('url')
 
+const { KEY_PROTECTED } = require('../../db/models/ProjectSettings')
+
 const { base64URLEncode, sha256, URLEncode } = require('../../db/utils')
 
 function badRequest (reply, error, description) {
@@ -77,23 +79,41 @@ module.exports = async function (app) {
         if (!client_id) {
             return badRequest(reply, 'invalid_request', 'Invalid client_id')
         }
+        if (!redirect_uri) {
+            return badRequest(reply, 'invalid_request', 'Invalid redirect_uri')
+        }
+        let redirectURI
+        try {
+            redirectURI = new URL(redirect_uri)
+        } catch (err) {
+            return badRequest(reply, 'invalid_request', 'Invalid redirect_uri')
+        }
         if (client_id !== 'ff-plugin') {
             // Check client_id is valid. Note - no client_secret provided at this point
             const authClient = await app.db.controllers.AuthClient.getAuthClient(client_id)
             if (!authClient) {
                 return badRequest(reply, 'invalid_request', 'Invalid client_id')
             }
+            // Ensure redirect_uri path component is correct
+            if (
+                // HTTP Auth callback
+                !/\/_ffAuth\/callback$/.test(redirectURI.pathname) &&
+                // Admin Auth callback
+                !/\/auth\/strategy\/callback$/.test(redirectURI.pathname)
+            ) {
+                return badRequest(reply, 'invalid_request', 'Invalid redirect_uri')
+            }
             if (!/^(editor($|-))|httpAuth-/.test(scope)) {
                 return redirectInvalidRequest(reply, redirect_uri, 'invalid_request', "Invalid scope '" + scope + "'. Only 'editor[-version]' is supported", state)
             }
         } else {
+            // Ensure redirect_uri path component is correct for the tools plugin
+            if (!/\/flow(fuse|forge)-nr-tools\/auth\/callback$/.test(redirectURI.pathname)) {
+                return badRequest(reply, 'invalid_request', 'Invalid redirect_uri')
+            }
             if (scope !== 'ff-plugin') {
                 return redirectInvalidRequest(reply, redirect_uri, 'invalid_request', "Invalid scope '" + scope + "'. Only 'ff-plugin' is supported", state)
             }
-        }
-
-        if (!redirect_uri) {
-            return badRequest(reply, 'invalid_request', 'Invalid redirect_uri')
         }
         // If anything else missing, redirect with details
         if (request.validationError) {
@@ -172,8 +192,9 @@ module.exports = async function (app) {
                     const isEditor = /^editor($|-)/.test(requestObject.scope)
                     if (isEditor) {
                         // Allow admin users to have read-access to flows
+                        const protectedInstance = await project.getSetting(KEY_PROTECTED)
                         const canReadFlows = request.session.User.admin || app.hasPermission(teamMembership, 'project:flows:view')
-                        const canWriteFlows = app.hasPermission(teamMembership, 'project:flows:edit')
+                        const canWriteFlows = app.hasPermission(teamMembership, 'project:flows:edit') && !protectedInstance?.enabled
                         const canReadHTTP = app.hasPermission(teamMembership, 'project:flows:http')
                         if (!canReadFlows && !canWriteFlows) {
                             if (!canReadHTTP) {
@@ -315,7 +336,8 @@ module.exports = async function (app) {
                 const teamMembership = await app.db.models.TeamMember.findOne({ where: { TeamId: project.TeamId, UserId: requestObject.userId } })
                 const user = await app.db.models.User.findOne({ where: { id: requestObject.userId }, attributes: ['admin'] })
                 const canReadFlows = user.admin || app.hasPermission(teamMembership, 'project:flows:view')
-                const canWriteFlows = app.hasPermission(teamMembership, 'project:flows:edit')
+                const protectedInstance = await project.getSetting(KEY_PROTECTED)
+                const canWriteFlows = app.hasPermission(teamMembership, 'project:flows:edit') && !protectedInstance?.enabled
                 const canReadHTTP = app.hasPermission(teamMembership, 'project:flows:http')
                 const isEditor = /^editor($|-)/.test(requestObject.scope)
 

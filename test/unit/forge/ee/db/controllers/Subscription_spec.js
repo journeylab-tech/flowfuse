@@ -3,12 +3,15 @@ const setup = require('../../setup')
 
 describe('Subscription controller', function () {
     let app
+
     beforeEach(async function () {
+        setup.setupStripe()
         app = await setup()
     })
 
     afterEach(async function () {
         await app.close()
+        setup.resetStripe()
     })
 
     describe('createSubscription', function () {
@@ -81,7 +84,7 @@ describe('Subscription controller', function () {
             await app.db.controllers.Subscription.deleteSubscription(team)
 
             const subscription = await app.db.models.Subscription.byTeamId(team.id)
-            should(subscription).equal(null)
+            ;(subscription === null).should.be.true()
         })
     })
 

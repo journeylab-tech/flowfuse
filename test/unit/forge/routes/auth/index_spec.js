@@ -27,7 +27,13 @@ describe('Accounts API', async function () {
 
     describe('Register User', async function () {
         before(async function () {
-            app = await setup()
+            app = await setup({
+                limits: {
+                    users: 100,
+                    instances: 100,
+                    teams: 100
+                }
+            })
         })
         after(async function () {
             await app.close()
@@ -37,7 +43,6 @@ describe('Accounts API', async function () {
             app.settings.set('user:signup', false)
             app.settings.set('team:user:invite:external', false)
             app.settings.set('user:team:auto-create', false)
-            app.license.defaults.users = 150
         })
 
         async function expectRejection (opts, reason) {
@@ -76,6 +81,20 @@ describe('Accounts API', async function () {
             // TODO: check user audit logs - expect 'account.xxx-yyy' { status: 'okay', ... }
         })
 
+        it('allows user to register - mixed case username', async function () {
+            app.settings.set('user:signup', true)
+
+            const response = await registerUser({
+                username: 'MixedCaseUserName',
+                password: '12345678',
+                name: 'MixedCaseUserName',
+                email: 'MixedCaseUserName@example.com'
+            })
+            response.statusCode.should.equal(200)
+            const result = response.json()
+            result.should.have.property('username', 'MixedCaseUserName')
+            result.should.have.property('id')
+        })
         it('rejects reserved user names', async function () {
             app.settings.set('user:signup', true)
 
@@ -113,6 +132,14 @@ describe('Accounts API', async function () {
                 email: 'u1-2@example.com'
             }, /Username or email not available/)
 
+            // Try with uppercase
+            await expectRejection({
+                username: 'U1',
+                password: '12345678',
+                name: 'u1.3',
+                email: 'u1-3@example.com'
+            }, /Username or email not available/)
+
             // TODO: check user audit logs - expect 'account.xxx-yyy' { code: '', error, '' }
         })
         it('rejects duplicate email', async function () {
@@ -134,10 +161,21 @@ describe('Accounts API', async function () {
 
             // TODO: check user audit logs - expect 'account.xxx-yyy' { code: '', error, '' }
         })
+        it('rejects bad username', async function () {
+            app.settings.set('user:signup', true)
+
+            await expectRejection({
+                username: 'bad@user!',
+                password: '12345678',
+                name: 'u1.2',
+                email: 'u1@example.com'
+            }, /invalid username/)
+        })
 
         it('Limits how many users can be created when unlicensed', async function () {
             app.settings.set('user:signup', true)
             const currentCount = await app.db.models.User.count()
+            const currentLimit = app.license.defaults.users
             app.license.defaults.users = currentCount + 2
             for (let i = currentCount; i < currentCount + 2; i++) {
                 const resp = await registerUser({
@@ -154,7 +192,7 @@ describe('Accounts API', async function () {
                 name: 'u-final',
                 email: 'u-final@example.com'
             }, /license limit reached/)
-
+            app.license.defaults.users = currentLimit
             // TODO: check user audit logs - expect 'account.xxx-yyy' { code: '', error, '' }
         })
 

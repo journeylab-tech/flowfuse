@@ -17,6 +17,9 @@
                     <router-link v-if="instance.ha?.replicas !== undefined" :to="{name: 'InstanceSettingsHA', params: { id: instance.id }}" @click.stop>
                         <StatusBadge class="ml-2 text-gray-400 hover:text-blue-600" status="high-availability" />
                     </router-link>
+                    <router-link v-if="instance.protected?.enabled" :to="{ name: 'InstanceSettingsProtect'}" @click.stop>
+                        <StatusBadge class="ml-2 text-gray-400 hover:text-blue-600" data-el="protected-pill" status="protected" text="Protected" />
+                    </router-link>
                 </template>
                 <template #context>
                     Application:
@@ -79,7 +82,7 @@ import Dialog from '../../services/dialog.js'
 import { InstanceStateMutator } from '../../utils/InstanceStateMutator.js'
 
 import ConfirmInstanceDeleteDialog from './Settings/dialogs/ConfirmInstanceDeleteDialog.vue'
-import InstanceEditorLink from './components/InstanceEditorLink.vue'
+import InstanceEditorLink from './components/EditorLink.vue'
 import InstanceStatusBadge from './components/InstanceStatusBadge.vue'
 
 export default {
@@ -115,7 +118,7 @@ export default {
     computed: {
         ...mapState('account', ['teamMembership', 'team']),
         isVisitingAdmin: function () {
-            return this.teamMembership.role === Roles.Admin
+            return this.teamMembership?.role === Roles.Admin
         },
         isLoading: function () {
             return this.loading.deleting || this.loading.suspend

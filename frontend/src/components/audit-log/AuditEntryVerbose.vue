@@ -138,6 +138,38 @@
         <span v-else-if="!error">Provisioning data not found in audit entry.</span>
     </template>
 
+    <!-- Device Actions Events -->
+    <template v-else-if="entry.event === 'device.started'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.device">Device '{{ entry.body.device?.name }}' was started.</span>
+        <span v-else-if="!error">Device data not found in audit entry.</span>
+    </template>
+    <template v-else-if="entry.event === 'device.start-failed'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.device">Something went wrong, and we were unable to start Device '{{ entry.body.device.name }}'. Please check the logs to find out more.</span>
+        <span v-else-if="!error">Device data not found in audit entry.</span>
+    </template>
+    <template v-else-if="entry.event === 'device.restarted'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.device">Device '{{ entry.body.device.name }}' was restarted.</span>
+        <span v-else-if="!error">Device data not found in audit entry.</span>
+    </template>
+    <template v-else-if="entry.event === 'device.restart-failed'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.device">Something went wrong, and we were unable to restart Device '{{ entry.body.device.name }}'. Please check the logs to find out more.</span>
+        <span v-else-if="!error">Device data not found in audit entry.</span>
+    </template>
+    <template v-else-if="entry.event === 'device.suspended'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.device">Device '{{ entry.body.device.name }}' was suspended.</span>
+        <span v-else-if="!error">Device data not found in audit entry.</span>
+    </template>
+    <template v-else-if="entry.event === 'device.suspend-failed'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.device">Something went wrong, and we were unable to suspend Device '{{ entry.body.device.name }}'. Please check the logs to find out more.</span>
+        <span v-else-if="!error">Device data not found in audit entry.</span>
+    </template>
+
     <!-- Account Scoped Events -->
     <template v-else-if="entry.event === 'account.register'">
         <label>{{ AuditEvents[entry.event] }}</label>
@@ -365,6 +397,11 @@
         <span v-if="!error && entry.body?.device && entry.body.snapshot">Snapshot '{{ entry.body.snapshot?.name }}' has been set as the target for Application owned device '{{ entry.body.device.name }}'.</span>
         <span v-else-if="!error">Device data not found in audit entry.</span>
     </template>
+    <template v-else-if="entry.event === 'device.settings.updated'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.device">Device '{{ entry.body.device?.name }}' has had the following changes made to its settings: <AuditEntryUpdates :updates="entry.body.updates" /></span>
+        <span v-else-if="!error">Instance data not found in audit entry.</span>
+    </template>
 
     <!-- Application Device Group Events -->
     <template v-else-if="entry.event === 'application.deviceGroup.updated'">
@@ -444,6 +481,16 @@
         <span v-if="!error && entry.body?.project">Instance '{{ entry.body.project.name }}' was assigned to the '{{ entry.body.pipelineStage.name }}' Stage in the '{{ entry.body.pipeline.name }}' Pipeline</span>
         <span v-else-if="!error">Instance data not found in audit entry.</span>
     </template>
+    <template v-else-if="entry.event === 'project.protected'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.project">Instance '{{ entry.body.project.name }}' was placed into Protected State</span>
+        <span v-else-if="!error">Instance data not found in audit entry.</span>
+    </template>
+    <template v-else-if="entry.event === 'project.unprotected'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error && entry.body?.project">Instance '{{ entry.body.project.name }}' was un protected</span>
+        <span v-else-if="!error">Instance data not found in audit entry.</span>
+    </template>
     <template v-else-if="entry.event === 'project.device.assigned'">
         <label>{{ AuditEvents[entry.event] }}</label>
         <span v-if="!error && entry.body?.project">Device '{{ entry.body.device?.name }}' was assigned to Instance '{{ entry.body.project?.name }}'</span>
@@ -503,6 +550,18 @@
         <label>{{ AuditEvents[entry.event] }}</label>
         <span v-if="!error && entry.body?.project && entry.body.snapshot">Snapshot '{{ entry.body.snapshot?.name }}' has been imported for Instance '{{ entry.body.project?.name }}' from Instance '{{ entry.body.sourceProject?.name }}'.</span>
         <span v-else-if="!error">Instance data not found in audit entry.</span>
+    </template>
+    <template v-else-if="entry.event === 'project.httpToken.created'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error">HTTP Bearer Token '{{ entry.body.token.name }}' has been created for Instance '{{ entry.body.project.name }}'</span>
+    </template>
+    <template v-else-if="entry.event === 'project.httpToken.updated'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error">HTTP Bearer Token has been Updated <AuditEntryUpdates :updates="entry.body.updates" />.</span>
+    </template>
+    <template v-else-if="entry.event === 'project.httpToken.deleted'">
+        <label>{{ AuditEvents[entry.event] }}</label>
+        <span v-if="!error">HTTP Bearer Token '{{ entry.body.token.name }}' has been Deleted from Instance '{{ entry.body.project.name }}'.</span>
     </template>
 
     <!-- Node-RED Events -->
@@ -566,7 +625,8 @@
     <!-- Catch All -->
     <template v-else>
         <label>{{ computeLabelForUnknown(entry) }}</label>
-        <span>We have no details available for event type{{ entry?.event ? ` '${entry.event}'` : '' }}</span>
+        <span v-if="error && entry.body.error.message">{{ entry.body.error.message }}</span>
+        <span v-else>We have no details available for event type{{ entry?.event ? ` '${entry.event}'` : '' }}</span>
     </template>
 
     <template v-if="error">

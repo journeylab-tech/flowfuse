@@ -10,7 +10,12 @@ const Controllers = require('../controllers')
 const { buildPaginationSearchClause } = require('../utils')
 
 const ALLOWED_SETTINGS = {
-    env: 1
+    env: 1,
+    autoSnapshot: 1
+}
+
+const DEFAULT_SETTINGS = {
+    autoSnapshot: true
 }
 
 module.exports = {
@@ -24,6 +29,9 @@ module.exports = {
         settingsHash: { type: DataTypes.STRING, allowNull: true },
         agentVersion: { type: DataTypes.STRING, allowNull: true },
         mode: { type: DataTypes.STRING, allowNull: true, defaultValue: 'autonomous' },
+        editorAffinity: { type: DataTypes.STRING, defaultValue: '' },
+        editorToken: { type: DataTypes.STRING, defaultValue: '' },
+        editorConnected: { type: DataTypes.BOOLEAN, defaultValue: false },
         /** @type {'instance'|'application'|null} a virtual column that signifies the parent type e.g. `"instance"`, `"application"` */
         ownerType: {
             type: DataTypes.VIRTUAL(DataTypes.ENUM('instance', 'application', null)),
@@ -61,9 +69,8 @@ module.exports = {
                 // if the product is licensed, we permit overage
                 const isLicensed = app.license.active()
                 if (isLicensed !== true) {
-                    const deviceLimit = app.license.get('devices')
-                    const deviceCount = await M.Device.count()
-                    if (deviceCount >= deviceLimit) {
+                    const { devices } = await app.license.usage('devices')
+                    if (devices.count >= devices.limit) {
                         throw new Error('license limit reached')
                     }
                 }
@@ -74,7 +81,7 @@ module.exports = {
                     await app.auditLog.Platform.platform.license.overage('system', null, devices)
                 }
             },
-            beforeSave: async (device, options) => {
+            afterSave: async (device, options) => {
                 // since `id`, `name` and `type` are added as FF_DEVICE_xx env vars, we
                 // should update the settings checksum if they are modified
                 if (device.changed('name') || device.changed('type') || device.changed('id')) {
@@ -131,6 +138,7 @@ module.exports = {
                 },
                 async updateSettingsHash (settings) {
                     const _settings = settings || await this.getAllSettings()
+                    delete _settings.autoSnapshot // autoSnapshot is not part of the settings hash
                     this.settingsHash = hashSettings(_settings)
                 },
                 async getAllSettings () {
@@ -140,6 +148,9 @@ module.exports = {
                         result[setting.key] = setting.value
                     })
                     result.env = Controllers.Device.insertPlatformSpecificEnvVars(this, result.env) // add platform specific device env vars
+                    if (!Object.prototype.hasOwnProperty.call(result, 'autoSnapshot')) {
+                        result.autoSnapshot = DEFAULT_SETTINGS.autoSnapshot
+                    }
                     return result
                 },
                 async updateSettings (obj) {
@@ -161,7 +172,7 @@ module.exports = {
                         if (key === 'env' && value && Array.isArray(value)) {
                             value = Controllers.Device.removePlatformSpecificEnvVars(value) // remove platform specific values
                         }
-                        const result = await M.ProjectSettings.upsert({ DeviceId: this.id, key, value })
+                        const result = await M.DeviceSettings.upsert({ DeviceId: this.id, key, value })
                         await this.updateSettingsHash()
                         await this.save()
                         return result
@@ -177,7 +188,7 @@ module.exports = {
                         }
                         return result.value
                     }
-                    return undefined
+                    return DEFAULT_SETTINGS[key]
                 },
                 async getLatestSnapshot () {
                     const snapshots = await this.getProjectSnapshots({

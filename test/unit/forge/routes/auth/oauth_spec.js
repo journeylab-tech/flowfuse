@@ -29,7 +29,9 @@ describe('OAuth', async function () {
         const userInfoURL = '/api/v1/user'
 
         before(async function () {
-            app = await setup()
+            app = await setup({
+                license: 'eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJGbG93Rm9yZ2UgSW5jLiIsInN1YiI6IkZsb3dGb3JnZSBJbmMuIERldmVsb3BtZW50IiwibmJmIjoxNjYyNDIyNDAwLCJleHAiOjc5ODY5MDIzOTksIm5vdGUiOiJEZXZlbG9wbWVudC1tb2RlIE9ubHkuIE5vdCBmb3IgcHJvZHVjdGlvbiIsInVzZXJzIjoxNTAsInRlYW1zIjo1MCwicHJvamVjdHMiOjUwLCJkZXZpY2VzIjo1MCwiZGV2Ijp0cnVlLCJpYXQiOjE2NjI0ODI5ODd9.e8Jeppq4aURwWYz-rEpnXs9RY2Y7HF7LJ6rMtMZWdw2Xls6-iyaiKV1TyzQw5sUBAhdUSZxgtiFH5e_cNJgrUg'
+            })
             TestObjects.bob = await app.factory.createUser({
                 username: 'bob',
                 name: 'Bob Fett',
@@ -54,7 +56,7 @@ describe('OAuth', async function () {
             params.state = ''
             params.code_challenge = base64URLEncode(crypto.createHash('sha256').update(verifier).digest())
             params.code_challenge_method = 'S256'
-            params.redirect_uri = callbackURL
+            params.redirect_uri = opts.callbackURL || callbackURL
             const authURL = new URL(authorizationURL)
             authURL.search = new URLSearchParams(params)
             return {
@@ -141,6 +143,37 @@ describe('OAuth', async function () {
             // Return the scope granted to this user
             return result.scope
         }
+
+        it('rejects invalid redirect_uri - non-uri', async function () {
+            const instanceCreds = await app.project.refreshAuthTokens()
+            const clientID = instanceCreds.clientID
+
+            // 1. Initial request - without session cookie
+            const requestOptions = generateOAuthRequest({ clientID, callbackURL: 'garbage-url' })
+            const response = await app.inject({
+                method: 'GET',
+                url: requestOptions.authURL
+            })
+            response.should.have.property('statusCode', 400)
+            const reply = response.json()
+            reply.should.have.property('error', 'invalid_request')
+            reply.description.should.match(/redirect_uri/)
+        })
+        it('rejects invalid redirect_uri - invalid uri', async function () {
+            const instanceCreds = await app.project.refreshAuthTokens()
+            const clientID = instanceCreds.clientID
+
+            // 1. Initial request - without session cookie
+            const requestOptions = generateOAuthRequest({ clientID, callbackURL: 'https://example.com' })
+            const response = await app.inject({
+                method: 'GET',
+                url: requestOptions.authURL
+            })
+            response.should.have.property('statusCode', 400)
+            const reply = response.json()
+            reply.should.have.property('error', 'invalid_request')
+            reply.description.should.match(/redirect_uri/)
+        })
 
         it('redirects non-logged in user to login', async function () {
             const instanceCreds = await app.project.refreshAuthTokens()
@@ -235,6 +268,14 @@ describe('OAuth', async function () {
             await app.db.models.TeamMember.destroy({ where: { UserId: app.adminUser.id } })
             await login('alice', 'aaPassword')
             const scope = await runFullLogin(app.adminUser)
+            scope.should.equal('read')
+        })
+
+        it('completes oauth flow - owner on protected instance - read-only', async function () {
+            await app.team.addUser(TestObjects.bob, { through: { role: app.factory.Roles.Roles.Owner } })
+            await app.project.updateProtectedInstanceState({ enabled: true })
+            await login('bob', 'bbPassword')
+            const scope = await runFullLogin(TestObjects.bob)
             scope.should.equal('read')
         })
     })

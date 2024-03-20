@@ -41,6 +41,10 @@ module.exports = async function (settings = {}, config = {}) {
 
     const forge = await Forge({ config })
     await forge.settings.set('setup:initialised', true)
+    forge.license.defaults.users = 50
+    forge.license.defaults.teams = 50
+    forge.license.defaults.instances = 50
+
     const factory = new TestModelFactory(forge)
 
     const projectType = await factory.createProjectType({ name: 'type1' })
@@ -58,6 +62,9 @@ module.exports = async function (settings = {}, config = {}) {
 
     // non admin, not in any team but will be invited and removed as required
     const userDave = await factory.createUser({ username: 'dave', name: 'Dave Vader', email: 'dave@example.com', password: 'ddPassword', email_verified: true, password_expired: false })
+
+    // team member
+    const userEddy = await factory.createUser({ username: 'eddy', name: 'Edward Organa', email: 'eddy@example.com', email_verified: true, password: 'eePassword' })
 
     // Platform Setup
     const template = await factory.createProjectTemplate({ name: 'template1' }, userAlice)
@@ -126,6 +133,7 @@ module.exports = async function (settings = {}, config = {}) {
     /// Team 2
     const team2 = await factory.createTeam({ name: 'BTeam' })
     await team2.addUser(userBob, { through: { role: Roles.Owner } })
+    await team2.addUser(userEddy, { through: { role: Roles.Member } })
 
     // Create pending invite for Dave to join BTeam
     await factory.createInvitation(team2, userBob, userDave)

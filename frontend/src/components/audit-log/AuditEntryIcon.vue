@@ -69,7 +69,9 @@ const iconMap = {
         'project.start-failed',
         'project.stopped',
         'project.restarted',
-        'project.suspended'
+        'project.suspended',
+        'project.protected',
+        'project.unprotected'
     ],
     'project-types': [
         'platform.project-type.created',
@@ -117,6 +119,7 @@ const iconMap = {
         'platform.settings.update',
         'team.settings.updated',
         'project.settings.updated',
+        'device.settings.updated',
         'team.type.changed'
     ],
     'user-profile': [
@@ -187,7 +190,13 @@ const iconMap = {
         'team.device.credentials-generated',
         'team.device.credentialsGenerated', // legacy event
         'project.snapshot.deviceTarget', // legacy event
-        'device.credentials.generated'
+        'device.credentials.generated',
+        'device.started',
+        'device.start-failed',
+        'device.restarted',
+        'device.restart-failed',
+        'device.suspended',
+        'device.suspend-failed'
     ],
     'device-group': [
         'application.deviceGroup.created',
@@ -208,7 +217,10 @@ const iconMap = {
     token: [
         'team.device.provisioning.created',
         'team.device.provisioning.updated',
-        'team.device.provisioning.deleted'
+        'team.device.provisioning.deleted',
+        'project.httpToken.created',
+        'project.httpToken.updated',
+        'project.httpToken.deleted'
     ],
     pipeline: [
         'application.pipeline.created',

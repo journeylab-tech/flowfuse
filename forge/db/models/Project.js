@@ -17,7 +17,7 @@ const { DataTypes, Op } = require('sequelize')
 
 const Controllers = require('../controllers')
 
-const { KEY_HOSTNAME, KEY_SETTINGS, KEY_HA } = require('./ProjectSettings')
+const { KEY_HOSTNAME, KEY_SETTINGS, KEY_HA, KEY_PROTECTED } = require('./ProjectSettings')
 
 const BANNED_NAME_LIST = [
     'www',
@@ -122,17 +122,16 @@ module.exports = {
                 // if the product is licensed, we permit overage
                 const isLicensed = app.license.active()
                 if (isLicensed !== true) {
-                    const projectLimit = app.license.get('projects')
-                    const projectCount = await M.Project.count()
-                    if (projectCount >= projectLimit) {
+                    const { instances } = await app.license.usage('instances')
+                    if (instances.count >= instances.limit) {
                         throw new Error('license limit reached')
                     }
                 }
             },
             afterCreate: async (project, opts) => {
-                const { projects } = await app.license.usage('projects')
-                if (projects.count > projects.limit) {
-                    await app.auditLog.Platform.platform.license.overage('system', null, projects)
+                const { instances } = await app.license.usage('instances')
+                if (instances.count > instances.limit) {
+                    await app.auditLog.Platform.platform.license.overage('system', null, instances)
                 }
             },
             afterDestroy: async (project, opts) => {
@@ -358,7 +357,8 @@ module.exports = {
                                 [Op.or]: [
                                     { key: KEY_SETTINGS },
                                     { key: KEY_HOSTNAME },
-                                    { key: KEY_HA }
+                                    { key: KEY_HA },
+                                    { key: KEY_PROTECTED }
                                 ]
                             },
                             required: false
@@ -409,7 +409,8 @@ module.exports = {
                             where: {
                                 [Op.or]: [
                                     { key: KEY_SETTINGS },
-                                    { key: KEY_HA }
+                                    { key: KEY_HA },
+                                    { key: KEY_PROTECTED }
                                 ]
                             },
                             required: false

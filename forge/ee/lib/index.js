@@ -10,6 +10,7 @@ module.exports = fp(async function (app, opts) {
 
     if (app.license.get('tier') === 'enterprise') {
         require('./ha').init(app)
+        require('./protectedInstance').init(app)
         app.decorate('sso', await require('./sso').init(app))
         // Set the MFA Feature Flag
         app.config.features.register('mfa', true, true)
@@ -25,4 +26,13 @@ module.exports = fp(async function (app, opts) {
 
     // Set the Custom Catalogs Flag
     app.config.features.register('customCatalogs', true, true)
+
+    // Set the Device Auto Snapshot Feature Flag
+    app.config.features.register('deviceAutoSnapshot', true, true)
+
+    // Set the Instance Auto Snapshot Feature Flag
+    app.config.features.register('instanceAutoSnapshot', true, true)
+
+    // Set the Editor Limits Feature Flag
+    app.config.features.register('editorLimits', true, true)
 }, { name: 'app.ee.lib' })

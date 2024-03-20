@@ -198,6 +198,16 @@ module.exports = {
         if (typeof result.httpNodeAuth?.pass === 'string' && result.httpNodeAuth.pass.length > 0) {
             result.httpNodeAuth.pass = hash(result.httpNodeAuth.pass)
         }
+        if (result.apiMaxLength) {
+            if (!/^\d+(?:kb|mb)$/.test(result.apiMaxLength)) {
+                throw new Error('Invalid settings.apiMaxLength')
+            }
+        }
+        if (result.debugMaxLenth) {
+            if (!Number.isInteger(result.debugMaxLength) || result.debugMaxLength < 0) {
+                throw new Error('Invalid settings.debugMaxLength')
+            }
+        }
         return result
     },
 

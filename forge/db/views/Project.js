@@ -1,4 +1,4 @@
-const { KEY_HOSTNAME, KEY_SETTINGS, KEY_HA } = require('../models/ProjectSettings')
+const { KEY_HOSTNAME, KEY_SETTINGS, KEY_HA, KEY_PROTECTED } = require('../models/ProjectSettings')
 
 module.exports = function (app) {
     app.addSchema({
@@ -26,6 +26,10 @@ module.exports = function (app) {
             },
             stack: { $ref: 'StackSummary' },
             ha: {
+                type: 'object',
+                additionalProperties: true
+            },
+            protected: {
                 type: 'object',
                 additionalProperties: true
             }
@@ -68,6 +72,10 @@ module.exports = function (app) {
         if (app.config.features.enabled('ha')) {
             const settingsHARow = proj.ProjectSettings?.find(row => row.key === KEY_HA)
             result.ha = settingsHARow?.value || { disabled: true }
+        }
+        if (app.config.features.enabled('protectedInstance')) {
+            const settingsProtectedRow = proj.ProjectSettings?.find(row => row.key === KEY_PROTECTED)
+            result.protected = settingsProtectedRow?.value || { enabled: false }
         }
 
         if (proj.Application) {
@@ -133,7 +141,13 @@ module.exports = function (app) {
             ha: {
                 type: 'object',
                 additionalProperties: true
-            }
+            },
+            protected: {
+                type: 'object',
+                additionalProperties: true
+            },
+            mostRecentAuditLogCreatedAt: { type: 'string' },
+            mostRecentAuditLogEvent: { type: 'string' }
         }
     })
     function projectSummary (project) {
@@ -144,6 +158,12 @@ module.exports = function (app) {
             createdAt: project.createdAt,
             updatedAt: project.updatedAt,
             links: project.links
+        }
+        if (project.get('mostRecentAuditLogCreatedAt')) {
+            result.mostRecentAuditLogCreatedAt = new Date(project.get('mostRecentAuditLogCreatedAt'))
+        }
+        if (project.get('mostRecentAuditLogEvent')) {
+            result.mostRecentAuditLogEvent = project.get('mostRecentAuditLogEvent')
         }
         const settingsSettingsRow = project.ProjectSettings?.find((projectSettingsRow) => projectSettingsRow.key === KEY_SETTINGS)
         if (settingsSettingsRow) {
@@ -156,6 +176,10 @@ module.exports = function (app) {
         if (app.config.features.enabled('ha')) {
             const settingsHARow = project.ProjectSettings?.find(row => row.key === KEY_HA)
             result.ha = settingsHARow?.value || { disabled: true }
+        }
+        if (app.config.features.enabled('protectedInstance')) {
+            const settingsProtectedRow = project.ProjectSettings?.find(row => row.key === KEY_PROTECTED)
+            result.protected = settingsProtectedRow?.value || { enabled: false }
         }
         return result
     }

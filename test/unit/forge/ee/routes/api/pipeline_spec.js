@@ -98,10 +98,21 @@ describe('Pipelines API', function () {
             password: 'ppPassword'
         })
 
+        const userBob = await TestObjects.factory.createUser({
+            admin: false,
+            username: 'bob',
+            name: 'Bob Kenobi',
+            email: 'bob@example.com',
+            password: 'bbPassword'
+        })
+
         const team1 = await TestObjects.factory.createTeam({ name: 'PTeam' })
         await team1.addUser(userPez, { through: { role: Roles.Owner } })
+        await TestObjects.team.addUser(userBob, { through: { role: Roles.Member } })
 
         await login('pez', 'ppPassword')
+
+        await login('bob', 'bbPassword')
 
         await login('alice', 'aaPassword')
     })
@@ -204,6 +215,35 @@ describe('Pipelines API', function () {
 
                     response.statusCode.should.equal(400)
                 })
+
+                it('Rejects if instance owned by another application', async function () {
+                    const application2 = await TestObjects.factory.createApplication({ name: 'application-1 2' }, TestObjects.team)
+                    const instanceThree = await TestObjects.factory.createInstance(
+                        { name: 'instance-three' },
+                        application2,
+                        app.stack,
+                        app.template,
+                        app.projectType,
+                        { start: false }
+                    )
+                    const pipelineId = TestObjects.pipeline.hashid
+
+                    const response = await app.inject({
+                        method: 'POST',
+                        url: `/api/v1/pipelines/${pipelineId}/stages`,
+                        payload: {
+                            name: 'stage-two',
+                            instanceId: instanceThree.id,
+                            action: 'prompt'
+                        },
+                        cookies: { sid: TestObjects.tokens.alice }
+                    })
+
+                    const body = await response.json()
+                    response.statusCode.should.equal(400)
+                    body.should.have.property('code', 'invalid_input')
+                    body.should.have.property('error').match(/Invalid instance/)
+                })
             })
         })
 
@@ -253,6 +293,28 @@ describe('Pipelines API', function () {
 
                     response.statusCode.should.equal(400)
                 })
+                it('Rejects if device owned by another application', async function () {
+                    const application2 = await TestObjects.factory.createApplication({ name: 'application-1 2' }, TestObjects.team)
+                    const otherDevice = await TestObjects.factory.createDevice({ name: 'device-b', type: 'dog' }, TestObjects.team, null, application2)
+
+                    const pipelineId = TestObjects.pipeline.hashid
+
+                    const response = await app.inject({
+                        method: 'POST',
+                        url: `/api/v1/pipelines/${pipelineId}/stages`,
+                        payload: {
+                            name: 'stage-two',
+                            deviceId: otherDevice.hashid,
+                            action: 'prompt'
+                        },
+                        cookies: { sid: TestObjects.tokens.alice }
+                    })
+
+                    const body = await response.json()
+                    response.statusCode.should.equal(400)
+                    body.should.have.property('code', 'invalid_input')
+                    body.should.have.property('error').match(/Invalid device/)
+                })
             })
         })
 
@@ -300,6 +362,27 @@ describe('Pipelines API', function () {
                     const body = await response.json()
                     body.should.have.property('code', 'invalid_input')
                     body.should.have.property('error').match(/A Device Group cannot be the first stage/)
+                })
+                it('Rejects a pipeline stage if the device group owned by another application', async function () {
+                    const application2 = await TestObjects.factory.createApplication({ name: 'application-1 2' }, TestObjects.team)
+                    const otherDeviceGroup = await TestObjects.factory.createApplicationDeviceGroup({ name: 'device-group-c' }, application2)
+
+                    const pipelineId = TestObjects.pipeline.hashid
+
+                    const response = await app.inject({
+                        method: 'POST',
+                        url: `/api/v1/pipelines/${pipelineId}/stages`,
+                        payload: {
+                            name: 'stage-two',
+                            deviceGroupId: otherDeviceGroup.hashid,
+                            action: 'prompt'
+                        },
+                        cookies: { sid: TestObjects.tokens.alice }
+                    })
+                    response.statusCode.should.equal(400)
+                    const body = await response.json()
+                    body.should.have.property('code', 'invalid_input')
+                    body.should.have.property('error').match(/Invalid device group/)
                 })
             })
 
@@ -2515,6 +2598,60 @@ describe('Pipelines API', function () {
 
                 response.statusCode.should.equal(400)
             })
+        })
+    })
+
+    describe('Work with Protected Instances', function () {
+        async function isDeployComplete (instance) {
+            const instanceStatusResponse = (await app.inject({
+                method: 'GET',
+                url: `/api/v1/projects/${instance.id}`,
+                cookies: { sid: TestObjects.tokens.alice }
+            })).json()
+
+            return instanceStatusResponse?.meta?.isDeploying === false
+        }
+
+        function waitForDeployToComplete (instance) {
+            return new Promise((resolve, reject) => {
+                const refreshIntervalId = setInterval(async () => {
+                    if (await isDeployComplete(instance)) {
+                        clearInterval(refreshIntervalId)
+                        resolve()
+                    }
+                }, 250)
+            })
+        }
+
+        beforeEach(async function () {
+            const factory = app.factory
+
+            await TestObjects.instanceTwo.updateProtectedInstanceState({ enabled: true })
+            TestObjects.stageTwo = await factory.createPipelineStage({ name: 'stage-two', instanceId: TestObjects.instanceTwo.id, source: TestObjects.stageOne.hashid }, TestObjects.pipeline)
+        })
+
+        after(async function () {
+            await TestObjects.instanceTwo.updateProtectedInstanceState({ enabled: false })
+        })
+
+        it('should allow Owner to deploy to Protected Instance', async function () {
+            const response = await app.inject({
+                method: 'PUT',
+                url: `/api/v1/pipelines/${TestObjects.pipeline.hashid}/stages/${TestObjects.stageOne.hashid}/deploy`,
+                cookies: { sid: TestObjects.tokens.alice }
+            })
+            response.statusCode.should.equal(200)
+
+            await waitForDeployToComplete(TestObjects.instanceTwo)
+        })
+
+        it('should not allow Member to deploy to Protected Instance', async function () {
+            const response = await app.inject({
+                method: 'PUT',
+                url: `/api/v1/pipelines/${TestObjects.pipeline.hashid}/stages/${TestObjects.stageOne.hashid}/deploy`,
+                cookies: { sid: TestObjects.tokens.bob }
+            })
+            response.statusCode.should.equal(403)
         })
     })
 

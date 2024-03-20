@@ -14,7 +14,7 @@
                     <ff-nav-breadcrumb>{{ device.name }}</ff-nav-breadcrumb>
                 </template>
                 <template #status>
-                    <div class="space-x-6 flex">
+                    <div class="flex flex-wrap gap-2">
                         <DeviceLastSeenBadge :last-seen-at="device.lastSeenAt" :last-seen-ms="device.lastSeenMs" :last-seen-since="device.lastSeenSince" />
                         <StatusBadge :status="device.status" />
                         <DeviceModeBadge v-if="isDevModeAvailable " :mode="device.mode" />
@@ -34,14 +34,20 @@
                     </div>
                 </template>
                 <template v-if="isDevModeAvailable" #tools>
-                    <div class="space-x-2 flex align-center">
-                        <button v-if="editorAvailable && !isVisitingAdmin" data-action="open-editor" class="ff-btn ff-btn--secondary" @click="openTunnel(true)">
+                    <!--
+                        div style 34px is a workaround to prevent the Device Editor button growing taller than adjacent
+                        button (size difference is caused by odd padding in the toggle button, which though not visible
+                        is still there and affects the button height in this div group)
+                    -->
+                    <div class="space-x-2 flex align-center" style="height: 34px;">
+                        <DeveloperModeToggle data-el="device-devmode-toggle" :device="device" @mode-change="setDeviceMode" />
+                        <button v-if="!isVisitingAdmin" data-action="open-editor" class="ff-btn transition-fade--color ff-btn--secondary ff-btn-icon h-9" :disabled="!editorAvailable" @click="openTunnel(true)">
                             Device Editor
                             <span class="ff-btn--icon ff-btn--icon-right">
                                 <ExternalLinkIcon />
                             </span>
                         </button>
-                        <DeveloperModeToggle data-el="device-devmode-toggle" :device="device" @mode-change="setDeviceMode" />
+                        <DropdownMenu v-if="hasPermission('device:change-status')" data-el="device-actions-dropdown" buttonClass="ff-btn ff-btn--primary" :options="actionsDropdownOptions">Actions</DropdownMenu>
                     </div>
                 </template>
             </SectionNavigationHeader>
@@ -51,7 +57,7 @@
                 <div class="ff-banner" data-el="banner-device-as-admin">You are viewing this device as an Administrator</div>
             </Teleport>
             <div class="px-3 pb-3 md:px-6 md:pb-6">
-                <router-view :instance="device.instance" :closingTunnel="closingTunnel" :openingTunnel="openingTunnel" :device="device" @device-updated="loadDevice" @close-tunnel="closeTunnel" @open-tunnel="openTunnel" @device-refresh="loadDevice" @assign-device="openAssignmentDialog" />
+                <router-view :instance="device.instance" :closingTunnel="closingTunnel" :openingTunnel="openingTunnel" :device="device" @device-updated="loadDevice" @close-tunnel="closeTunnel" @open-tunnel="openTunnel" @device-refresh="deviceRefresh" @assign-device="openAssignmentDialog" />
             </div>
         </div>
         <!-- Dialogs -->
@@ -113,6 +119,7 @@ import { mapState } from 'vuex'
 
 import { Roles } from '../../../../forge/lib/roles.js'
 import deviceApi from '../../api/devices.js'
+import DropdownMenu from '../../components/DropdownMenu.vue'
 import SectionNavigationHeader from '../../components/SectionNavigationHeader.vue'
 import SideNavigationTeamOptions from '../../components/SideNavigationTeamOptions.vue'
 import StatusBadge from '../../components/StatusBadge.vue'
@@ -120,6 +127,8 @@ import SubscriptionExpiredBanner from '../../components/banners/SubscriptionExpi
 import TeamTrialBanner from '../../components/banners/TeamTrial.vue'
 import permissionsMixin from '../../mixins/Permissions.js'
 import Alerts from '../../services/alerts.js'
+import Dialog from '../../services/dialog.js'
+import { DeviceStateMutator } from '../../utils/DeviceStateMutator.js'
 
 import { createPollTimer } from '../../utils/timers.js'
 import DeviceAssignApplicationDialog from '../team/Devices/dialogs/DeviceAssignApplicationDialog.vue'
@@ -134,6 +143,16 @@ import DeviceModeBadge from './components/DeviceModeBadge.vue'
 // constants
 const POLL_TIME = 5000
 
+const deviceTransitionStates = [
+    'loading',
+    'installing',
+    'starting',
+    'stopping',
+    'restarting',
+    'suspending',
+    'importing'
+]
+
 export default {
     name: 'DevicePage',
     components: {
@@ -141,6 +160,7 @@ export default {
         DeveloperModeToggle,
         DeviceModeBadge,
         DeviceLastSeenBadge,
+        DropdownMenu,
         SectionNavigationHeader,
         SideNavigationTeamOptions,
         StatusBadge,
@@ -156,10 +176,13 @@ export default {
             mounted: false,
             device: null,
             agentSupportsDeviceAccess: false,
+            agentSupportsActions: false,
             openingTunnel: false,
             closingTunnel: false,
             /** @type {import('../../utils/timers.js').PollTimer} */
-            pollTimer: null
+            pollTimer: null,
+            /** @type {DeviceStateMutator} */
+            deviceStateMutator: null
         }
     },
     computed: {
@@ -174,17 +197,15 @@ export default {
         developerMode: function () {
             return this.device && this.agentSupportsDeviceAccess && this.device.mode === 'developer'
         },
+        deviceRunning () {
+            return this.device?.status === 'running'
+        },
         editorAvailable: function () {
             return this.isDevModeAvailable &&
                 this.device &&
                 this.agentSupportsDeviceAccess &&
                 this.developerMode &&
                 this.device.status === 'running'
-        },
-        tunnelReady: function () {
-            return this.editorAvailable &&
-                this.deviceEditorURL &&
-                this.device.editor?.connected
         },
         deviceEditorURL: function () {
             return this.device.editor?.url || ''
@@ -236,31 +257,74 @@ export default {
             }
 
             return navigation
+        },
+        actionsDropdownOptions () {
+            const flowActionsDisabled = !(this.device.status !== 'suspended')
+
+            const deviceStateChanging = this.device.pendingStateChange || this.device.optimisticStateChange
+
+            const result = [
+                // Start and Suspend are disabled until resolution of the feature is complete
+                // See comments in #3292
+                // {
+                //     name: 'Start',
+                //     action: this.startDevice,
+                //     disabled: deviceStateChanging || this.deviceRunning
+                // },
+                { name: 'Restart', action: this.restartDevice, disabled: deviceStateChanging || flowActionsDisabled }
+                // { name: 'Suspend', class: ['text-red-700'], action: this.showConfirmSuspendDialog, disabled: deviceStateChanging || flowActionsDisabled }
+            ]
+
+            if (this.hasPermission('device:delete')) {
+                result.push(null)
+                result.push({ name: 'Delete', class: ['text-red-700'], action: this.showConfirmDeleteDialog })
+            }
+
+            return result
         }
+    },
+    watch: {
+        device: 'deviceChanged'
     },
     async mounted () {
         this.mounted = true
         await this.loadDevice()
-        this.checkFeatures()
         this.pollTimer = createPollTimer(this.pollTimerElapsed, POLL_TIME)
     },
     unmounted () {
-        this.pollTimer.stop()
+        this.pollTimer?.stop()
+        clearTimeout(this.openTunnelTimeout)
     },
     methods: {
         pollTimerElapsed: async function () {
-            // Only refresh device via the timer if we are on the overview page or the developer mode page
+            // Only refresh device via the timer if we are on the overview page, developer mode page
+            // the device status is empty or the device is in a transition state
             // This is to prevent settings pages from refreshing the device state while modifying settings
             // See `watch: { device: { handler () ...  in pages/device/Settings/General.vue for why that happens
             const settingsPages = ['DeviceOverview', 'DeviceDeveloperMode']
             if (settingsPages.includes(this.$route.name)) {
                 this.loadDevice()
+            } else if (typeof this.device?.status === 'undefined') {
+                this.loadDevice()
+            } else if (deviceTransitionStates.includes(this.device?.status)) {
+                this.loadDevice()
             }
         },
         loadDevice: async function () {
             this.device = await deviceApi.getDevice(this.$route.params.id)
+            if (this.deviceStateMutator) {
+                this.deviceStateMutator.clearState()
+            }
             this.agentSupportsDeviceAccess = this.device.agentVersion && semver.gte(this.device.agentVersion, '0.8.0')
+            this.agentSupportsActions = this.device.agentVersion && semver.gte(this.device.agentVersion, '2.3.0')
             this.$store.dispatch('account/setTeam', this.device.team.slug)
+        },
+        deviceRefresh: async function () {
+            if (this.pollTimer.running) {
+                // If the poll timer is running, we don't need to manually refresh the device
+                return
+            }
+            this.loadDevice()
         },
         showOpenEditorDialog: async function () {
             this.$refs['open-editor-dialog'].show()
@@ -315,37 +379,61 @@ export default {
             window.open(this.deviceEditorURL, `device-editor-${this.device.id}`)
         },
         async openTunnel (launchEditor = false) {
-            if (this.device.status === 'running') {
-                if (this.device.editor?.enabled && this.device.editor?.connected) {
-                    this.openEditor()
-                } else {
-                    this.openingTunnel = true
-                    this.$refs.dialog.show()
-                    try {
-                        // * Enable Device Editor (Step 1) - (browser->frontendApi) User clicks button to "Enable Editor"
-                        const result = await deviceApi.enableEditorTunnel(this.device.id)
-                        if (result.affinity) {
-                            document.cookie = `FFSESSION=${result.affinity}`
-                        }
-                        this.updateTunnelStatus(result)
-                        setTimeout(() => {
-                            this.loadDevice()
-                            if (launchEditor && this.device.editor?.enabled && this.device.editor?.connected) {
-                                this.openEditor()
+            try {
+                if (this.deviceRunning) {
+                    if (this.device.editor?.enabled && this.device.editor?.connected && this.device.editor?.local) {
+                        this.openEditor()
+                    } else {
+                        this.openingTunnel = true
+                        this.$refs.dialog.show()
+
+                        // Polls the tunnel status until we see it connected to the
+                        // 'local' platform instance - will give up after 10 attempts
+                        const pollTunnelStatus = (done, attempt = 0, timeout = 500) => {
+                            if (attempt < 10) {
+                                this.openTunnelTimeout = setTimeout(async () => {
+                                    await this.loadDevice()
+                                    if (this.device.editor?.enabled && this.device.editor?.connected) {
+                                        if (this.device.editor?.local) {
+                                            if (launchEditor) {
+                                                this.openEditor()
+                                            }
+                                        } else {
+                                            pollTunnelStatus(done, attempt + 1, 200)
+                                            return
+                                        }
+                                    }
+                                    done()
+                                }, timeout)
                             }
+                        }
+
+                        try {
+                            if (!this.device.editor?.enabled || !this.device.editor?.connected) {
+                                // * Enable Device Editor (Step 1) - (browser->frontendApi) User clicks button to "Enable Editor"
+                                const result = await deviceApi.enableEditorTunnel(this.device.id)
+                                this.updateTunnelStatus(result)
+                            }
+                            pollTunnelStatus(() => {
+                                this.$refs.dialog.close()
+                                this.openingTunnel = false
+                            })
+                        } catch (err) {
                             this.$refs.dialog.close()
-                        }, 500)
-                    } finally {
-                        this.openingTunnel = false
+                            this.openingTunnel = false
+                        }
                     }
+                } else {
+                    Alerts.emit('Unable to establish a connection to the device. Please check it is connected and running then try again', 'warning', 7500)
                 }
-            } else {
-                Alerts.emit('Unable to establish a connection to the device. Please check it is connected and running then try again', 'warning', 7500)
+            } catch (err) {
+                console.warn('Error in openTunnel', err)
             }
         },
         async closeTunnel () {
             this.closingTunnel = true
             this.$refs.dialog.close()
+            clearTimeout(this.openTunnelTimeout)
             try {
                 const result = await deviceApi.disableEditorTunnel(this.device.id)
                 this.updateTunnelStatus(result)
@@ -359,6 +447,111 @@ export default {
             this.device.editor.url = status.url
             this.device.editor.enabled = !!status.enabled
             this.device.editor.connected = !!status.connected
+        },
+        deviceChanged () {
+            this.deviceStateMutator = new DeviceStateMutator(this.device)
+        },
+        showConfirmDeleteDialog () {
+            Dialog.show({
+                header: 'Delete Device',
+                kind: 'danger',
+                text: 'Are you sure you want to delete this device? Once deleted, there is no going back.',
+                confirmLabel: 'Delete'
+            }, async () => {
+                try {
+                    await deviceApi.deleteDevice(this.device.id)
+                    Alerts.emit('Successfully deleted the device', 'confirmation')
+                    // Trigger a refresh of team info to resync following device changes
+                    await this.$store.dispatch('account/refreshTeam')
+                    this.$router.push({ name: 'TeamDevices', params: { team_slug: this.team.slug } })
+                } catch (err) {
+                    Alerts.emit('Failed to delete device: ' + err.toString(), 'warning', 7500)
+                }
+            })
+        },
+        /**
+         * Checks agent version and shows warning if known old version is present. Returns true if the action can proceed
+         * @param {string} [message] - optional message to show in confirmation dialog. If omitted, no confirmation is shown
+         */
+        preActionChecks (message) {
+            if (this.device.agentVersion && !this.agentSupportsActions) {
+                // if agent version is present but is less than required version, show warning and halt
+                Alerts.emit('Device Agent V2.3 or greater is required to perform this action.', 'warning')
+                return false
+            }
+            if (!message) {
+                // no message means silent operation, no need to show confirmation
+                return true
+            }
+            if (!this.device.agentVersion) {
+                // if agent version is missing, be optimistic and give it a go, but show warning
+                Alerts.emit(`${message}.  NOTE: The device agent version is not known, the action may timeout`, 'warning')
+            } else {
+                Alerts.emit(message, 'confirmation')
+            }
+            return true
+        },
+        async startDevice () {
+            const preCheckOk = this.preActionChecks('Starting device...')
+            if (!preCheckOk) {
+                return
+            }
+            this.deviceStateMutator.setStateOptimistically('starting')
+            try {
+                await deviceApi.startDevice(this.device)
+                this.deviceStateMutator.setStateAsPendingFromServer()
+            } catch (err) {
+                let message = 'Device start request failed.'
+                if (err.response?.data?.error) {
+                    message = err.response.data.error
+                }
+                console.warn(message, err)
+                Alerts.emit(message, 'warning')
+                this.deviceStateMutator.restoreState()
+            }
+        },
+        async restartDevice () {
+            const preCheckOk = this.preActionChecks('Restarting device...')
+            if (!preCheckOk) {
+                return
+            }
+            this.deviceStateMutator.setStateOptimistically('restarting')
+            try {
+                await deviceApi.restartDevice(this.device)
+                this.deviceStateMutator.setStateAsPendingFromServer()
+            } catch (err) {
+                let message = 'Device restart request failed.'
+                if (err.response?.data?.error) {
+                    message = err.response.data.error
+                }
+                console.warn(message, err)
+                Alerts.emit(message, 'warning')
+            }
+        },
+        showConfirmSuspendDialog () {
+            const preCheckOk = this.preActionChecks() // silent check
+            if (!preCheckOk) {
+                return
+            }
+            Dialog.show({
+                header: 'Suspend Device',
+                text: 'Are you sure you want to suspend this device?',
+                confirmLabel: 'Suspend',
+                kind: 'danger'
+            }, () => {
+                this.deviceStateMutator.setStateOptimistically('suspending')
+                deviceApi.suspendDevice(this.device).then(() => {
+                    this.deviceStateMutator.setStateAsPendingFromServer()
+                    Alerts.emit('Device suspend request succeeded.', 'confirmation')
+                }).catch(err => {
+                    let message = 'Device suspend request failed.'
+                    if (err.response?.data?.error) {
+                        message = err.response.data.error
+                    }
+                    console.warn(message, err)
+                    Alerts.emit(message, 'warning')
+                })
+            })
         }
     }
 }
