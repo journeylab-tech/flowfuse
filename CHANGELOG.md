@@ -1,3 +1,58 @@
+#### 2.3.0: Release
+
+ - Allow .npmrc and calalogue urls to be set for Application bound devices (#3643) @hardillb
+ - fix: Update forge domain to use HTTPS (#3710) @ppawlowski
+ - Update concepts.md (#3706) @sumitshinde-84
+ - docs: Minor typo and language updates (#3707) @sumitshinde-84
+ - Bump tar from 6.1.15 to 6.2.1 (#3708) @app/dependabot
+ - Bump @fastify/swagger-ui from 2.1.0 to 3.0.0 (#3702) @app/dependabot
+ - Bump pg from 8.11.3 to 8.11.5 (#3705) @app/dependabot
+ - Bump mqtt from 5.3.5 to 5.5.0 (#3703) @app/dependabot
+ - Bump @immobiliarelabs/fastify-sentry from 8.0.0 to 8.0.1 (#3704) @app/dependabot
+ - Add explicit relationship tests prior to adding MSSQL support (#3700) @Steve-Mcl
+ - Update branch-deploy.yaml to use custom broker domain (#3674) @ppawlowski
+ - Bump eslint from 8.56.0 to 8.57.0 (#3701) @app/dependabot
+ - Update instance-settings.md (#3699) @sumitshinde-84
+ - Bump @sentry/node from 7.81.0 to 7.109.0 (#3664) @app/dependabot
+ - Link to ebook and blog post (#3697) @ZJvandeWeg
+
+#### 2.2.2: Release
+
+ - Handle sessionless requests in deviceEditor routes (#3692) @knolleary
+ - Enable enterprise features on pre-staging environments (#3686) @ppawlowski
+ - SSO docs update (#3687) @ZJvandeWeg
+ - Update keycloak sso docs (#3684) @knolleary
+ - Show Target Snapshots for Device Groups (#3680) @Steve-Mcl
+ - Bump @babel/core from 7.23.7 to 7.24.3 (#3661) @app/dependabot
+ - Make limits tougher on common auth routes (#3679) @knolleary
+ - Add error handling and logging if device sends invalid response (#3677) @knolleary
+ - Ensure InstanceForm applies InstanceType availability for manual billing teams (#3676) @knolleary
+ - Bump nodemon from 3.0.3 to 3.1.0 (#3662) @app/dependabot
+ - Bump @fastify/static from 7.0.1 to 7.0.2 (#3665) @app/dependabot
+ - Bump random-words from 2.0.0 to 2.0.1 (#3663) @app/dependabot
+ - Ensure polling for NR logs is stopped if page changed (#3667) @Steve-Mcl
+ - Add credentialSecret to snapshot model and update logic to use it (#3649) @knolleary
+ - Implement blueprint availability to team type option (#3645) @Steve-Mcl
+ - Signup form validation improvements (#3601) @Steve-Mcl
+ - Show dashboard link on instances when dashboard-2 is installed (#3652) @Steve-Mcl
+ - Update persistent-context.md (#3651) @ZJvandeWeg
+ - Bump express from 4.18.2 to 4.19.2 (#3641) @app/dependabot
+ - Ensure popover is above other elements (#3633) @Steve-Mcl
+ - Bump @vitest/coverage-istanbul from 1.2.1 to 1.4.0 (#3635) @app/dependabot
+ - Bump sass-loader from 13.3.2 to 14.1.1 (#3636) @app/dependabot
+ - Bump @vitejs/plugin-vue from 5.0.3 to 5.0.4 (#3639) @app/dependabot
+ - Bump webpack from 5.89.0 to 5.91.0 (#3637) @app/dependabot
+ - Bump dotenv from 16.4.1 to 16.4.5 (#3640) @app/dependabot
+ - Bump nodemailer from 6.9.9 to 6.9.13 (#3638) @app/dependabot
+ - Bump sequelize from 6.35.2 to 6.37.1 (#3634) @app/dependabot
+ - Bump webpack-dev-middleware from 5.3.3 to 5.3.4 (#3618) @app/dependabot
+ - ci: Add initial FlowFuse platform setup when deployed from feature branch (#3602) @ppawlowski
+ - Clear Device Group when device owner is changed (#3616) @Steve-Mcl
+ - Ensure device group data loaded on direct navigation (#3614) @knolleary
+ - Fix gtag handling (#3615) @knolleary
+ - Disable "add device" when at limit (#3606) @Steve-Mcl
+ - Verify snapshot ownership on api (#3608) @knolleary
+
 #### 2.2.1: Release
 
  - Validate kb and km for `apiMaxLength` (#3603) @Steve-Mcl

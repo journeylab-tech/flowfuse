@@ -21,7 +21,7 @@ jobs:
       PR_NUMBER: ${{ github.event.number }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set variables
         run: | 
@@ -44,7 +44,7 @@ jobs:
           outputs: type=docker,dest=/tmp/k8s-forge.tar
       
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: k8s-forge
           path: /tmp/k8s-forge.tar
@@ -64,7 +64,7 @@ jobs:
       PR_NUMBER: ${{ github.event.number }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set variables
         run: | 
@@ -72,7 +72,7 @@ jobs:
           echo "timestamp=$(date +%s)" >> $GITHUB_ENV
 
       - name: Download artifact
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: k8s-forge
           path: /tmp
@@ -83,7 +83,7 @@ jobs:
           docker image ls -a
 
       - name: Delete artifact
-        uses: geekyeggo/delete-artifact@v2
+        uses: geekyeggo/delete-artifact@v5
         with:
           name: k8s-forge
           failOnError: false
@@ -99,7 +99,7 @@ jobs:
         
       - name: Login to AWS ECR
         id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v1
+        uses: aws-actions/amazon-ecr-login@v2
         with:
           mask-password: true
 
@@ -109,7 +109,7 @@ jobs:
           docker push ${{ steps.aws-config.outputs.aws-account-id }}.dkr.ecr.eu-west-1.amazonaws.com/flowforge/${{ env.tagged_image }}-${{ env.timestamp }}
 
       - name: Configure AWS credentials for EKS interaction
-        uses: aws-actions/configure-aws-credentials@v3
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_ACCESS_KEY_SECRET }}
@@ -122,12 +122,21 @@ jobs:
           aws eks update-kubeconfig --region eu-west-1 --name ${{ secrets.EKS_CLUSTER_NAME }}
 
       - name: Check out FlowFuse/helm repository (to access latest helm chart)
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: 'FlowFuse/helm'
           ref: 'main'
           path: 'helm-repo'
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check if deployment exists
+        id: check-initial-setup
+        run: |
+          if helm status --namespace "pr-${{ env.PR_NUMBER }}" flowfuse-pr-${{ env.PR_NUMBER }} &> /dev/null; then
+            echo "initialSetup=false" >> $GITHUB_ENV
+          else
+            echo "initialSetup=true" >> $GITHUB_ENV
+          fi
 
       - name: Deploy
         run: |
@@ -140,10 +149,17 @@ jobs:
             --values ci/ci-values.yaml \
             --set forge.image=${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.eu-west-1.amazonaws.com/flowforge/${{ env.tagged_image }}-${{ env.timestamp }} \
             --set forge.entryPoint=${{ env.PR_NUMBER }}.flowfuse.dev \
+            --set forge.broker.hostname=${{ env.PR_NUMBER }}-mqtt.flowfuse.dev \
             --set forge.projectNamespace=pr-${{ env.PR_NUMBER }}-projects \
             --set forge.clusterRole.name=pr-${{ env.PR_NUMBER }}-clusterrole \
+            --set forge.license=${{ secrets.PRE_STAGING_LICENSE }} \
             flowfuse-pr-${{ env.PR_NUMBER }} ./helm-repo/helm/flowforge
 
+      - name: Initial setup
+        if: ${{ env.initialSetup == 'true' }}
+        run: |
+          ./.github/scripts/initial-setup.sh ${{ env.PR_NUMBER }} ${{ secrets.INIT_CONFIG_PASSWORD_HASH }} ${{ secrets.INIT_CONFIG_ACCESS_TOKEN_HASH }} ${{ secrets.INIT_CONFIG_ACCESS_TOKEN }} ${{ secrets.INIT_CONFIG_PASSWORD }}
+          
       - name: Summary
         run: |
           echo "### :rocket: Deployment succeeded" >> $GITHUB_STEP_SUMMARY

@@ -502,6 +502,18 @@ describe('Device API', async function () {
     })
 
     describe('Get device details', async function () {
+        it('non-team member cannot get device details', async function () {
+            const CTeamDevice = await app.db.models.Device.create({ name: 'deviceOne', type: 'something', credentialSecret: 'deviceKey' })
+            await CTeamDevice.setTeam(TestObjects.CTeam)
+
+            // bob should not have access to CTeamDevice
+            const response = await app.inject({
+                method: 'GET',
+                url: `/api/v1/devices/${CTeamDevice.hashid}`,
+                cookies: { sid: TestObjects.tokens.bob }
+            })
+            response.statusCode.should.equal(403)
+        })
         it('provides device details including project and team', async function () {
             TestObjects.deviceOne = await app.db.models.Device.create({ name: 'deviceOne', type: 'something', credentialSecret: 'deviceKey' })
             TestObjects.deviceProject = await app.db.models.Project.create({ name: generateProjectName(), type: '', url: '' })
@@ -996,6 +1008,35 @@ describe('Device API', async function () {
                 nonPlatformVars[0].should.have.property('name', 'a')
                 nonPlatformVars[0].should.have.property('value', 'foo')
                 settings.should.not.have.property('invalid')
+            })
+            it('owner set .npmrc', async function () {
+                const device = await createDevice({ name: 'Ad2', type: '', team: TestObjects.ATeam.hashid, as: TestObjects.tokens.alice })
+                const response = await app.inject({
+                    method: 'PUT',
+                    url: `/api/v1/devices/${device.id}/settings`,
+                    body: {
+                        palette: {
+                            npmrc: '; testing',
+                            catalogues: ['http://example.com/catalog.json']
+                        }
+                    },
+                    cookies: { sid: TestObjects.tokens.alice }
+                })
+                response.statusCode.should.equal(200)
+                response.json().should.have.property('status', 'okay')
+
+                const settingsResponse = await app.inject({
+                    method: 'GET',
+                    url: `/api/v1/devices/${device.id}/settings`,
+                    cookies: { sid: TestObjects.tokens.alice }
+                })
+
+                const settings = settingsResponse.json()
+                settings.should.have.property('palette')
+                settings.palette.should.have.property('npmrc', '; testing')
+                settings.palette.should.have.property('catalogues')
+                settings.palette.catalogues.should.have.length(1)
+                settings.palette.catalogues[0].should.equal('http://example.com/catalog.json')
             })
         })
 

@@ -170,12 +170,22 @@ class DeviceTunnelManager {
             const reply = tunnel.requests[response.id]
             if (reply) {
                 delete tunnel.requests[response.id]
-                reply.headers(response.headers ? response.headers : {})
-                reply.code(response.status)
-                if (response.body) {
-                    reply.send(Buffer.from(response.body))
-                } else {
+                if (!response.status) {
+                    // An invalid response has been received. We aren't sure what triggers this,
+                    // so log it and move on
+                    // Ideally we may want to tear down the socket, but doing a minimal iteration
+                    // to capture more information
+                    reply.code(500)
                     reply.send()
+                    this.app.log.warn(`Device ${device.hashid} tunnel error: unexpected response: ${msg.toString()}`)
+                } else {
+                    reply.headers(response.headers ? response.headers : {})
+                    reply.code(response.status)
+                    if (response.body) {
+                        reply.send(Buffer.from(response.body))
+                    } else {
+                        reply.send()
+                    }
                 }
             } else if (response.ws) {
                 const wsSocket = tunnel.forwardedWS[response.id]
@@ -269,24 +279,28 @@ class DeviceTunnelManager {
             wsToDevice.on('message', msg => {
                 // Forward messages sent by the editor down to the device
                 // console.info(`[${tunnel.id}] [${requestId}] E>R`, msg.toString())
-                tunnel.socket.send(JSON.stringify({
-                    id: requestId,
-                    ws: true,
-                    body: msg.toString()
-                }))
+                if (tunnel.socket) {
+                    tunnel.socket.send(JSON.stringify({
+                        id: requestId,
+                        ws: true,
+                        body: msg.toString()
+                    }))
+                }
             })
             wsToDevice.on('close', msg => {
                 this.app.log.info(`Device ${device.hashid} tunnel id:${tunnel.id} - editor connection closed req:${requestId} `)
                 // The editor has closed its websocket. Send notification to the
                 // device so it can close its corresponing connection
                 // console.info(`[${tunnel.id}] [${requestId}] E>R closed`)
-                if (tunnel.forwardedWS[requestId] && tunnel.socket) {
-                    // console.info(`[${tunnel.id}] [${requestId}] E>R closed - notifying the device`)
-                    tunnel.socket.send(JSON.stringify({
-                        id: requestId,
-                        ws: true,
-                        closed: true
-                    }))
+                if (tunnel.forwardedWS[requestId]) {
+                    if (tunnel.socket) {
+                        // console.info(`[${tunnel.id}] [${requestId}] E>R closed - notifying the device`)
+                        tunnel.socket.send(JSON.stringify({
+                            id: requestId,
+                            ws: true,
+                            closed: true
+                        }))
+                    }
                     delete tunnel.forwardedWS[requestId]
                 }
             })

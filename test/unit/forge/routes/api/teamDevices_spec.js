@@ -404,6 +404,21 @@ describe('Team Devices API', function () {
             result.should.have.property('code', 'unexpected_error')
             result.should.have.property('error')
         })
+        it('Non owner cannot generate a provisioning tokens', async function () {
+            const response = await app.inject({
+                method: 'POST',
+                url: `/api/v1/teams/${TestObjects.ATeam.hashid}/devices/provisioning`,
+                cookies: { sid: TestObjects.tokens.chris },
+                payload: {
+                    name: 'Provisioning Token',
+                    instance: TestObjects.Project1.id
+                }
+            })
+            response.statusCode.should.equal(401)
+            const result = response.json()
+            result.should.have.property('code', 'unauthorized')
+            result.should.have.property('error', 'unauthorized')
+        })
         it('Cannot generate a provisioning token for instance in another team', async function () {
             const response = await app.inject({
                 method: 'POST',
@@ -498,6 +513,18 @@ describe('Team Devices API', function () {
             const result = response.json()
             result.should.have.property('code', 'invalid_instance')
         })
+        it('Cannot edit a provisioning token if team is incorrect', async function () {
+            // Try editing an ATeam token under the BTeam url
+            const response = await app.inject({
+                method: 'PUT',
+                url: `/api/v1/teams/${TestObjects.BTeam.hashid}/devices/provisioning/${TestObjects.provisioningTokens.token2.id}`,
+                cookies: { sid: TestObjects.tokens.alice },
+                payload: {
+                    instance: TestObjects.BTeamInstance.id
+                }
+            })
+            response.statusCode.should.equal(404)
+        })
         it('Delete a provisioning token', async function () {
             // DELETE /api/v1/team/:teamId/devices/provisioning/:tokenId
             // needsPermission('team:device:provisioning-token:delete')  (must be admin or team owner)
@@ -509,6 +536,15 @@ describe('Team Devices API', function () {
             response.statusCode.should.equal(200)
             const result = response.json()
             result.should.have.property('status', 'okay')
+        })
+        it('Cannot delete a provisioning token if team is incorrect', async function () {
+            // Try deleting an ATeam token under the BTeam url
+            const response = await app.inject({
+                method: 'DELETE',
+                url: `/api/v1/teams/${TestObjects.BTeam.hashid}/devices/provisioning/${TestObjects.provisioningTokens.token1.id}`,
+                cookies: { sid: TestObjects.tokens.alice }
+            })
+            response.statusCode.should.equal(404)
         })
         it('Non Team Owner cannot delete a provisioning token', async function () {
             // DELETE /api/v1/team/:teamId/devices/provisioning/:tokenId

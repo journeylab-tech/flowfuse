@@ -459,8 +459,12 @@ export default {
             )
         },
         teamRuntimeLimitReached () {
-            const teamTypeRuntimeLimit = this.team.type.properties?.runtimes?.limit
-            return (teamTypeRuntimeLimit > 0 && (this.team.deviceCount + this.team.instanceCount) >= teamTypeRuntimeLimit)
+            let teamTypeRuntimeLimit = this.team.type.properties?.runtimes?.limit
+            const currentRuntimeCount = this.team.deviceCount + this.team.instanceCount
+            if (this.team.billing?.trial && !this.team.billing?.active && this.team.type.properties?.trial?.runtimesLimit) {
+                teamTypeRuntimeLimit = this.team.type.properties?.trial?.runtimesLimit
+            }
+            return (teamTypeRuntimeLimit > 0 && currentRuntimeCount >= teamTypeRuntimeLimit)
         },
         teamInstanceLimitReached () {
             return this.projectTypes.length > 0 && this.activeProjectTypeCount === 0
@@ -503,14 +507,16 @@ export default {
         this.templates = (await templateListPromise).templates.filter(template => template.active)
 
         this.activeProjectTypeCount = projectTypes.length
-        if (this.billingEnabled && !this.team.billing?.unmanaged) {
-            try {
-                this.subscription = await billingApi.getSubscriptionInfo(this.team.id)
-            } catch (err) {
-                if (err.response?.data?.code === 'not_found') {
-                    // This team has no subscription.
-                    if (!this.team.billing?.trial || this.team.billing?.trialEnded) {
-                        throw err
+        if (this.billingEnabled) {
+            if (!this.team.billing?.unmanaged) {
+                try {
+                    this.subscription = await billingApi.getSubscriptionInfo(this.team.id)
+                } catch (err) {
+                    if (err.response?.data?.code === 'not_found') {
+                        // This team has no subscription.
+                        if (!this.team.billing?.trial || this.team.billing?.trialEnded) {
+                            throw err
+                        }
                     }
                 }
             }
@@ -536,7 +542,7 @@ export default {
                         pt.disabled = true
                     }
                 }
-                if (!pt.disabled) {
+                if (!pt.disabled && !this.team.billing?.unmanaged) {
                     let billingDescription
                     if (teamTypeInstanceProperties) {
                         // TeamType provides meta data to use - do not fall back to instanceType
@@ -684,8 +690,7 @@ export default {
             if (!this.flowBlueprintsEnabled || this.isCopyProject) {
                 return []
             }
-
-            const response = await flowBlueprintsApi.getFlowBlueprints()
+            const response = await flowBlueprintsApi.getFlowBlueprintsForTeam(this.team.id)
             const blueprints = response.blueprints
 
             const defaultBlueprint = blueprints.find((blueprint) => blueprint.default) || blueprints[0]
